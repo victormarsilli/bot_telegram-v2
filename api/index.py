@@ -83,14 +83,16 @@ async def start(update: Update, context):
 
 @app.route('/api/index', methods=['POST'])
 def main():
-    # Inicializar la aplicación del bot
+    # 1. Crear la app del bot de forma sincrónica
+    from telegram.ext import Application
     bot_app = Application.builder().token(TELEGRAM_TOKEN).build()
     bot_app.add_handler(CommandHandler("start", start))
     
-    # Procesar el update de Telegram sin usar 'await' directamente en main()
+    # 2. Obtener el mensaje de Telegram
     update_data = request.get_json(force=True)
     update = Update.de_json(update_data, bot_app.bot)
     
+    # 3. Crear el bucle para ejecutar lo asincrónico dentro de una función normal
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
