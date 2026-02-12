@@ -62,7 +62,7 @@ async def bot_handler():
         
         # El botón apunta a la URL principal (/) donde está el HTML_JUEGO
         url_app = f"https://{request.host}/"
-        keyboard = [[InlineKeyboardButton("🎁 ABRIR COFRE", web_app=WebAppInfo(url=url_app))]]
+        keyboard = [[InlineKeyboardButton("🎁 ABRIT EL COFRE", web_app=WebAppInfo(url=url_app))]]
         await update.message.reply_text(f"¡Hola {user.first_name}! 🏴‍☠️\\n\\n¡Tu cofre te espera!", reply_markup=InlineKeyboardMarkup(keyboard))
 
     bot_app.add_handler(CommandHandler("start", start))
