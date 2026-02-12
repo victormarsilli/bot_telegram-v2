@@ -2,20 +2,19 @@ import os
 import asyncio
 from flask import Flask, request, render_template_string
 from telegram import Update, WebAppInfo, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler
+from telegram.ext import Application
 from supabase import create_client
 
 app = Flask(__name__)
 
-# Configuración (Asegurate de tener estas variables en el panel de Vercel)
+# Configuración
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-# Conexión a la base de datos
 db = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# --- EL DISEÑO DEL JUEGO (HTML) ---
+# --- HTML (Igual que antes) ---
 HTML_JUEGO = """
 <!DOCTYPE html>
 <html>
@@ -36,16 +35,12 @@ HTML_JUEGO = """
     <img id="cofre" src="https://i.imgur.com/8Y3XqG2.png" class="chest" alt="Cofre">
     <br>
     <button class="btn-tienda">🛒 TIENDA</button>
-
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand(); 
-
         let puntos = 0;
-        const cofre = document.getElementById('cofre');
         const puntosText = document.getElementById('puntos');
-
-        cofre.onclick = () => {
+        document.getElementById('cofre').onclick = () => {
             puntos++;
             puntosText.innerText = puntos;
             tg.HapticFeedback.impactOccurred('medium'); 
@@ -59,40 +54,35 @@ HTML_JUEGO = """
 def home():
     return render_template_string(HTML_JUEGO)
 
-# --- LÓGICA DEL BOT ---
-async def start(update: Update, context):
+# --- LA FUNCIÓN START AHORA ES SINCRÓNICA ---
+def start_sync(update, context):
     user = update.effective_user
-    
-    # Registrar o actualizar usuario en Supabase
     try:
-        db.table("jugadores").upsert({
-            "user_id": user.id,
-            "nombre": user.first_name
-        }).execute()
-    except Exception as e:
-        print(f"Error Supabase: {e}")
+        db.table("jugadores").upsert({"user_id": user.id, "nombre": user.first_name}).execute()
+    except:
+        pass
 
-    # Botón para abrir la Mini App
     url_app = f"https://{request.host}/"
     keyboard = [[InlineKeyboardButton("🎁 ABRIR MI COFRE", web_app=WebAppInfo(url=url_app))]]
     
-    await update.message.reply_text(
-        f"¡Hola {user.first_name}! 🏴‍☠️\\n\\nBienvenido a tu imperio. Tocá el botón de abajo para empezar a recolectar oro.",
+    # Usamos el bot directamente para enviar el mensaje (de forma asincrónica pero dentro del loop)
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(update.message.reply_text(
+        f"¡Hola {user.first_name}! 🏴‍☠️\\n\\nBienvenido al imperio. Tocá abajo:",
         reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    ))
 
 @app.route('/api/index', methods=['POST'])
 def main():
-    # 1. Crear la app del bot de forma sincrónica
-    from telegram.ext import Application
+    # Eliminamos cualquier rastro de 'async def' en las rutas de Flask
     bot_app = Application.builder().token(TELEGRAM_TOKEN).build()
-    bot_app.add_handler(CommandHandler("start", start))
     
-    # 2. Obtener el mensaje de Telegram
+    from telegram.ext import CommandHandler
+    bot_app.add_handler(CommandHandler("start", start_sync))
+    
     update_data = request.get_json(force=True)
     update = Update.de_json(update_data, bot_app.bot)
     
-    # 3. Crear el bucle para ejecutar lo asincrónico dentro de una función normal
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
