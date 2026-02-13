@@ -40,12 +40,12 @@ HTML_JUEGO = """
     <div class="card">
         <h3>🏦 SISTEMA DE STAKE</h3>
         <p>Ganá el 1% diario sobre tus TON depositados.</p>
-        <button class="btn" onclick="alert('Próximamente: Stake On-chain')">PONER EN STAKE</button>
+        <button class="btn" onclick="ejecutarStake()">PONER TODO EN STAKE</button>
     </div>
 
     <div class="card">
         <h3>💳 BILLETERA</h3>
-        <button class="btn" style="background: #2ecc71;">DEPOSITAR</button>
+        <button class="btn" style="background: #2ecc71;" onclick="enviarDeposito()">DEPOSITAR 1 TON</button>
         <button class="btn" style="background: #e74c3c;">RETIRAR</button>
     </div>
 
@@ -84,11 +84,85 @@ HTML_JUEGO = """
             manifestUrl: 'https://' + window.location.host + '/tonconnect-manifest.json',
             buttonRootId: 'ton-connect-button'
         });
+        async function enviarDeposito() {
+    if (!tonConnectUI.connected) {
+        alert("Primero conectá tu billetera arriba.");
+        return;
+    }
+
+    const transaction = {
+        validUntil: Math.floor(Date.now() / 1000) + 360, // 6 minutos de validez
+        messages: [
+            {
+                address: "TU_BILLETERA_DE_RECIBO_AQUI", // Pone acá tu dirección de TON
+                amount: "1000000000" // 1 TON (en nanoton)
+            }
+        ]
+    };
+
+    try {
+        const result = await tonConnectUI.sendTransaction(transaction);
+        alert("¡Transacción enviada! En unos minutos se acreditarán tus puntos.");
+        // Aquí podríamos mandar el hash a Supabase para verificarlo
+    } catch (e) {
+        console.error("Error en la transacción:", e);
+        alert("Transacción cancelada.");
+    }
+}
+async function ejecutarStake() {
+    if (!userId) return;
+    
+    const confirmacion = confirm("¿Querés poner todo tu saldo en Stake para ganar 1% diario?");
+    if (!confirmacion) return;
+
+    try {
+        const response = await fetch('/api/stake_now', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ user_id: userId })
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+            alert("¡Staking activado! Tus puntos ahora generan intereses.");
+            actualizarSaldo(); // Refrescamos la pantalla
+        } else {
+            alert("Error: " + result.error);
+        }
+    } catch (e) {
+        console.error("Error al procesar stake:", e);
+    }
+}
     </script>
 </body>
 </html>
 """
+@app.route('/api/stake_now', methods=['POST'])
+def stake_now():
+    data = request.get_json()
+    user_id = data.get('user_id')
+    
+    if not user_id:
+        return {"error": "Falta user_id"}, 400
 
+    try:
+        # 1. Obtenemos el saldo actual calculado (con intereses acumulados)
+        res_saldo = db.rpc('calcular_saldo_total', {'jugador_id': int(user_id)}).execute()
+        nuevo_total = float(res_saldo.data) if res_saldo.data else 0.0
+
+        if nuevo_total <= 0:
+            return {"error": "No tienes saldo para poner en stake"}, 400
+
+        # 2. Movemos todo al staking y reseteamos el 'ultimo_reclamo' a ahora
+        db.table("jugadores").update({
+            "puntos": 0,
+            "puntos_staking": nuevo_total,
+            "ultimo_reclamo": "now()"
+        }).eq("user_id", user_id).execute()
+
+        return {"success": True, "nuevo_stake": nuevo_total}
+    except Exception as e:
+        return {"error": str(e)}, 500
 @app.route('/')
 def home():
     return render_template_string(HTML_JUEGO)
@@ -133,6 +207,7 @@ async def bot_handler():
             f"¡Bienvenido {user.first_name}! 🏴‍☠️\\n\\nAcá podés gestionar tus TON y ganar intereses por Stake.",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
+        
 
     bot_app.add_handler(CommandHandler("start", start))
     update = Update.de_json(update_data, bot_app.bot)
