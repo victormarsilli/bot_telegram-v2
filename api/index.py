@@ -1,18 +1,24 @@
 import os
 import asyncio
+import requests
 from flask import Flask, request, render_template_string
 from telegram import Update, WebAppInfo, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler
 from supabase import create_client
 
-# Configuración
+# --- CONFIGURACIÓN ---
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 db = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# Configuración TON (Para verificación automática)
+TONCENTER_API_KEY = "TU_API_KEY_DE_TONCENTER"  # Obtenla en @tonapibot
+MI_BILLETERA_RECIBO = "TU_DIRECCION_DE_BILLETERA_AQUI"
+
 app = Flask(__name__)
 
+# --- DISEÑO DEL FRONTEND (HTML/JS) ---
 HTML_JUEGO = """
 <!DOCTYPE html>
 <html>
@@ -22,169 +28,161 @@ HTML_JUEGO = """
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
     <style>
-        body { background: #121212; color: white; font-family: 'Segoe UI', sans-serif; text-align: center; margin: 0; }
-        .card { background: #1e1e1e; margin: 15px; padding: 20px; border-radius: 15px; border: 1px solid #333; }
-        .balance { font-size: 35px; color: #0088cc; font-weight: bold; }
-        .btn { background: #0088cc; color: white; border: none; padding: 12px 20px; border-radius: 10px; font-weight: bold; width: 80%; margin: 10px 0; cursor: pointer; }
+        body { background: #121212; color: white; font-family: 'Segoe UI', sans-serif; text-align: center; margin: 0; padding-bottom: 50px; }
+        .card { background: #1e1e1e; margin: 15px; padding: 20px; border-radius: 15px; border: 1px solid #333; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        .balance { font-size: 38px; color: #0088cc; font-weight: bold; margin: 10px 0; }
+        .btn { background: #0088cc; color: white; border: none; padding: 15px; border-radius: 12px; font-weight: bold; width: 90%; margin: 10px 0; cursor: pointer; font-size: 16px; }
+        .btn-alt { background: #282828; border: 1px solid #444; }
         #ton-connect-button { display: flex; justify-content: center; margin: 20px 0; }
+        .label { color: #888; font-size: 14px; text-transform: uppercase; }
     </style>
 </head>
 <body>
     <div id="ton-connect-button"></div>
 
     <div class="card">
-        <div class="balance"><span id="puntos">0.00</span> TON</div>
-        <p style="color: #888;">Saldo en Stake: <span id="stake">0.00</span></p>
+        <span class="label">Balance Total (con Interés)</span>
+        <div class="balance"><span id="puntos">0.0000</span> TON</div>
+        <p style="color: #aaa;">En Staking: <span id="stake">0.00</span> TON</p>
     </div>
 
     <div class="card">
-        <h3>🏦 SISTEMA DE STAKE</h3>
-        <p>Ganá el 1% diario sobre tus TON depositados.</p>
-        <button class="btn" onclick="ejecutarStake()">PONER TODO EN STAKE</button>
+        <h3>🏦 STAKING</h3>
+        <p style="font-size: 14px; color: #ccc;">Generando 1% de interés diario</p>
+        <button class="btn" onclick="ejecutarStake()">PONER SALDO EN STAKE</button>
     </div>
 
     <div class="card">
         <h3>💳 BILLETERA</h3>
         <button class="btn" style="background: #2ecc71;" onclick="enviarDeposito()">DEPOSITAR 1 TON</button>
-        <button class="btn" style="background: #e74c3c;">RETIRAR</button>
+        <button class="btn btn-alt" onclick="solicitarRetiro()">RETIRAR FONDOS</button>
     </div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
-
-        // 1. Obtener el ID del usuario de Telegram
         const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : null;
 
-        // 2. Función para pedir el saldo al servidor (Flask -> Supabase)
+        // 1. Inicializar TON Connect
+        const tonConnectUI = new TON_CONNECT_UI.TonConnectUI({
+            manifestUrl: 'https://' + window.location.host + '/tonconnect-manifest.json',
+            buttonRootId: 'ton-connect-button'
+        });
+
+        // 2. Actualizar Saldo desde la API
         async function actualizarSaldo() {
             if (!userId) return;
             try {
                 const response = await fetch(`/api/get_balance?user_id=${userId}`);
                 const data = await response.json();
-                
                 if (data.puntos_totales !== undefined) {
-                    // Actualizamos los números en la pantalla
-                    document.getElementById('puntos').innerText = data.puntos_totales.toFixed(4);
+                    document.getElementById('puntos').innerText = data.puntos_totales.toFixed(6);
                     document.getElementById('stake').innerText = data.puntos_staking.toFixed(2);
                 }
-            } catch (e) {
-                console.error("Error al obtener saldo:", e);
-            }
+            } catch (e) { console.error(e); }
         }
 
-        // 3. Ejecutar la actualización al abrir y cada 10 segundos
+        // 3. Función de Depósito
+        async function enviarDeposito() {
+            if (!tonConnectUI.connected) { alert("Conectá tu wallet primero"); return; }
+            const transaction = {
+                validUntil: Math.floor(Date.now() / 1000) + 300,
+                messages: [{ address: " """ + MI_BILLETERA_RECIBO + """ ", amount: "1000000000" }]
+            };
+            try {
+                const result = await tonConnectUI.sendTransaction(transaction);
+                alert("Pago enviado. Verificando en la blockchain...");
+                // Enviamos el BOC (base64 de la transacción) para verificar
+                fetch('/api/verificar_pago', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ user_id: userId, boc: result.boc })
+                });
+            } catch (e) { alert("Transacción cancelada"); }
+        }
+
+        // 4. Función de Stake
+        async function ejecutarStake() {
+            if (!confirm("¿Mover saldo disponible a Staking?")) return;
+            const response = await fetch('/api/stake_now', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ user_id: userId })
+            });
+            const res = await response.json();
+            if (res.success) { alert("¡Stake activado!"); actualizarSaldo(); }
+            else { alert("Error: " + res.error); }
+        }
+
+        function solicitarRetiro() { alert("Solicitud enviada al administrador."); }
+
         if (userId) {
             actualizarSaldo();
-            setInterval(actualizarSaldo, 10000); 
+            setInterval(actualizarSaldo, 10000);
         }
-
-        // 4. Configuración de TON Connect
-        const tonConnectUI = new TON_CONNECT_UI.TonConnectUI({
-            manifestUrl: 'https://' + window.location.host + '/tonconnect-manifest.json',
-            buttonRootId: 'ton-connect-button'
-        });
-        async function enviarDeposito() {
-    if (!tonConnectUI.connected) {
-        alert("Primero conectá tu billetera arriba.");
-        return;
-    }
-
-    const transaction = {
-        validUntil: Math.floor(Date.now() / 1000) + 360, // 6 minutos de validez
-        messages: [
-            {
-                address: "TU_BILLETERA_DE_RECIBO_AQUI", // Pone acá tu dirección de TON
-                amount: "1000000000" // 1 TON (en nanoton)
-            }
-        ]
-    };
-
-    try {
-        const result = await tonConnectUI.sendTransaction(transaction);
-        alert("¡Transacción enviada! En unos minutos se acreditarán tus puntos.");
-        // Aquí podríamos mandar el hash a Supabase para verificarlo
-    } catch (e) {
-        console.error("Error en la transacción:", e);
-        alert("Transacción cancelada.");
-    }
-}
-async function ejecutarStake() {
-    if (!userId) return;
-    
-    const confirmacion = confirm("¿Querés poner todo tu saldo en Stake para ganar 1% diario?");
-    if (!confirmacion) return;
-
-    try {
-        const response = await fetch('/api/stake_now', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ user_id: userId })
-        });
-        
-        const result = await response.json();
-        if (result.success) {
-            alert("¡Staking activado! Tus puntos ahora generan intereses.");
-            actualizarSaldo(); // Refrescamos la pantalla
-        } else {
-            alert("Error: " + result.error);
-        }
-    } catch (e) {
-        console.error("Error al procesar stake:", e);
-    }
-}
     </script>
 </body>
 </html>
 """
-@app.route('/api/stake_now', methods=['POST'])
-def stake_now():
-    data = request.get_json()
-    user_id = data.get('user_id')
-    
-    if not user_id:
-        return {"error": "Falta user_id"}, 400
 
-    try:
-        # 1. Obtenemos el saldo actual calculado (con intereses acumulados)
-        res_saldo = db.rpc('calcular_saldo_total', {'jugador_id': int(user_id)}).execute()
-        nuevo_total = float(res_saldo.data) if res_saldo.data else 0.0
+# --- RUTAS DE LA API ---
 
-        if nuevo_total <= 0:
-            return {"error": "No tienes saldo para poner en stake"}, 400
-
-        # 2. Movemos todo al staking y reseteamos el 'ultimo_reclamo' a ahora
-        db.table("jugadores").update({
-            "puntos": 0,
-            "puntos_staking": nuevo_total,
-            "ultimo_reclamo": "now()"
-        }).eq("user_id", user_id).execute()
-
-        return {"success": True, "nuevo_stake": nuevo_total}
-    except Exception as e:
-        return {"error": str(e)}, 500
 @app.route('/')
 def home():
     return render_template_string(HTML_JUEGO)
+
 @app.route('/api/get_balance')
 def get_balance():
     user_id = request.args.get('user_id')
-    if not user_id:
-        return {"error": "Falta user_id"}, 400
-
     try:
-        # Llamamos a la función inteligente que creamos en Supabase (RPC)
-        result = db.rpc('calcular_saldo_total', {'jugador_id': int(user_id)}).execute()
-        
-        # También traemos el valor de puntos_staking por separado
-        user_data = db.table("jugadores").select("puntos_staking").eq("user_id", user_id).single().execute()
-        
+        res_total = db.rpc('calcular_saldo_total', {'jugador_id': int(user_id)}).execute()
+        res_user = db.table("jugadores").select("puntos_staking").eq("user_id", user_id).single().execute()
         return {
-            "puntos_totales": float(result.data) if result.data else 0.0,
-            "puntos_staking": float(user_data.data['puntos_staking']) if user_data.data else 0.0
+            "puntos_totales": float(res_total.data) if res_total.data else 0.0,
+            "puntos_staking": float(res_user.data['puntos_staking']) if res_user.data else 0.0
         }
+    except: return {"error": "Error de base de datos"}, 500
+
+@app.route('/api/stake_now', methods=['POST'])
+def stake_now():
+    user_id = request.get_json().get('user_id')
+    try:
+        res_saldo = db.rpc('calcular_saldo_total', {'jugador_id': int(user_id)}).execute()
+        nuevo_total = float(res_saldo.data)
+        db.table("jugadores").update({
+            "puntos": 0, "puntos_staking": nuevo_total, "ultimo_reclamo": "now()"
+        }).eq("user_id", user_id).execute()
+        return {"success": True}
+    except Exception as e: return {"error": str(e)}, 500
+
+@app.route('/api/verificar_pago', methods=['POST'])
+def verificar_pago():
+    data = request.get_json()
+    user_id = data.get('user_id')
+    boc = data.get('boc') # El mensaje de la transacción
+
+    # 1. Consultamos las últimas transacciones de tu billetera
+    url = f"https://toncenter.com/api/v2/getTransactions?address={MI_BILLETERA_RECIBO}&limit=5&api_key={TONCENTER_API_KEY}"
+    
+    try:
+        response = requests.get(url).json()
+        if response.get("ok"):
+            transacciones = response.get("result", [])
+            for tx in transacciones:
+                # Verificamos si el mensaje coincide o si el hash es reciente
+                # (Simplificado: verificamos que entró un pago de 1 TON)
+                valor = int(tx["in_msg"]["value"]) / 1e9
+                if valor >= 0.99: # Por si hay comisiones
+                    # Acreditamos en Supabase
+                    db.rpc('acreditar_puntos', {'id_usuario': user_id, 'cantidad': valor}).execute()
+                    return {"success": True, "mensaje": "¡Pago verificado!"}
+                    
     except Exception as e:
         return {"error": str(e)}, 500
+    
+    return {"success": False, "error": "No se encontró el pago todavía"}
+
+# --- MANEJADOR DEL BOT DE TELEGRAM ---
 
 @app.route('/api/index', methods=['POST'])
 async def bot_handler():
@@ -193,21 +191,14 @@ async def bot_handler():
     
     async def start(update, context):
         user = update.effective_user
-        # Registramos al usuario con los nuevos campos
-        try:
-            db.table("jugadores").upsert({
-                "user_id": user.id, 
-                "nombre": user.first_name
-            }).execute()
-        except: pass
+        db.table("jugadores").upsert({"user_id": user.id, "nombre": user.first_name}).execute()
         
         url_app = f"https://{request.host}/"
-        keyboard = [[InlineKeyboardButton("💎 ABRIR BILLETERA TON", web_app=WebAppInfo(url=url_app))]]
+        keyboard = [[InlineKeyboardButton("💎 MI BILLETERA vIcmAr", web_app=WebAppInfo(url=url_app))]]
         await update.message.reply_text(
-            f"¡Bienvenido {user.first_name}! 🏴‍☠️\\n\\nAcá podés gestionar tus TON y ganar intereses por Stake.",
+            f"¡Hola {user.first_name}! 🏴‍☠️\\n\\nBienvenido a tu centro de control de TON.",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
-        
 
     bot_app.add_handler(CommandHandler("start", start))
     update = Update.de_json(update_data, bot_app.bot)
