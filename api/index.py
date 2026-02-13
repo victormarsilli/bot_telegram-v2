@@ -5,20 +5,19 @@ from telegram import Update, WebAppInfo, InlineKeyboardButton, InlineKeyboardMar
 from telegram.ext import Application, CommandHandler
 from supabase import create_client
 
-# --- CONFIGURACIÓN DE VARIABLES ---
+# --- CONFIGURACIÓN DE VARIABLES (Leídas desde Vercel) ---
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-# ⚠️ REEMPLAZAR CON TUS DATOS (Asegúrate de que sean los correctos):
-TONCENTER_API_KEY = "TU_API_KEY_DE_TONCENTER"  
-MI_BILLETERA_RECIBO = "TU_DIRECCION_DE_BILLETERA_TON" 
-MI_ID_TELEGRAM = os.getenv("MI_ID_TELEGRAM") 
+MI_ID_TELEGRAM = os.getenv("MI_ID_TELEGRAM")
+# Si en Vercel la llamaste "TU_DIRECCION_DE_BILLETERA_TON", usá ese nombre aquí:
+MI_BILLETERA_RECIBO = os.getenv("TU_DIRECCION_DE_BILLETERA_TON") 
+TONCENTER_API_KEY = os.getenv("TONCENTER_API_KEY")
 
 db = create_client(SUPABASE_URL, SUPABASE_KEY)
 app = Flask(__name__)
 
-# --- RUTA DEL MANIFIESTO (Servida directamente por Python con Headers) ---
+# --- MANIFIESTO DINÁMICO ---
 @app.route('/tonconnect-manifest.json')
 def serve_manifest():
     response = jsonify({
@@ -27,10 +26,9 @@ def serve_manifest():
         "iconUrl": "https://bot-telegram-v2-gmny.vercel.app/icon.png"
     })
     response.headers.add('Access-Control-Allow-Origin', '*')
-    response.headers.add('Content-Type', 'application/json')
     return response
 
-# --- FRONTEND: HTML, CSS y JAVASCRIPT ---
+# --- FRONTEND ---
 HTML_JUEGO = f"""
 <!DOCTYPE html>
 <html>
@@ -44,26 +42,20 @@ HTML_JUEGO = f"""
         body {{ background: #121212; color: white; font-family: 'Segoe UI', sans-serif; text-align: center; margin: 0; padding-bottom: 50px; }}
         .card {{ background: #1e1e1e; margin: 15px; padding: 20px; border-radius: 15px; border: 1px solid #333; }}
         .balance {{ font-size: 38px; color: #0088cc; font-weight: bold; margin: 10px 0; }}
-        .btn {{ background: #0088cc; color: white; border: none; padding: 15px; border-radius: 12px; font-weight: bold; width: 90%; margin: 10px 0; cursor: pointer; font-size: 16px; transition: 0.3s; }}
-        .btn:active {{ transform: scale(0.98); opacity: 0.8; }}
-        #ton-connect-button {{ display: flex; justify-content: center; margin: 20px 0; }}
-        .label {{ color: #888; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }}
+        .btn {{ background: #0088cc; color: white; border: none; padding: 15px; border-radius: 12px; font-weight: bold; width: 90%; margin: 10px 0; cursor: pointer; font-size: 16px; }}
     </style>
 </head>
 <body>
     <div id="ton-connect-button"></div>
-
     <div class="card">
-        <span class="label">Balance Estimado</span>
+        <span style="color: #888; font-size: 12px;">BALANCE ESTIMADO</span>
         <div class="balance"><span id="puntos">0.0000</span> TON</div>
         <p style="color: #aaa; font-size: 14px;">Staking: <span id="stake">0.00</span> TON</p>
     </div>
-
     <div class="card">
-        <h3>🏦 vIcmAr PLATINUM STAKE</h3>
-        <button class="btn" onclick="ejecutarStake()">PASAR TODO A STAKE</button>
+        <h3>🏦 vIcmAr PLATINUM</h3>
+        <button class="btn" onclick="ejecutarStake()">ACTIVAR STAKING</button>
     </div>
-
     <div class="card">
         <h3>💳 MOVIMIENTOS</h3>
         <button class="btn" style="background: #2ecc71;" onclick="enviarDeposito()">DEPOSITAR (0.10 TON)</button>
@@ -72,11 +64,7 @@ HTML_JUEGO = f"""
 
     <script>
         const tg = window.Telegram.WebApp;
-        tg.expand();
         const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : null;
-        const userName = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.first_name : "Usuario";
-
-        // URL Directa para evitar errores de detección
         const tonConnectUI = new TON_CONNECT_UI.TonConnectUI({{
             manifestUrl: 'https://bot-telegram-v2-gmny.vercel.app/tonconnect-manifest.json',
             buttonRootId: 'ton-connect-button'
@@ -84,77 +72,63 @@ HTML_JUEGO = f"""
 
         async function actualizarSaldo() {{
             if (!userId) return;
-            try {{
-                const res = await fetch(`/api/get_balance?user_id=${{userId}}`);
-                const data = await res.json();
-                if (data.puntos_totales !== undefined) {{
-                    document.getElementById('puntos').innerText = data.puntos_totales.toFixed(6);
-                    document.getElementById('stake').innerText = data.puntos_staking.toFixed(2);
-                }}
-            }} catch (e) {{ console.error(e); }}
+            const res = await fetch(`/api/get_balance?user_id=${{userId}}`);
+            const data = await res.json();
+            if (data.puntos_totales !== undefined) {{
+                document.getElementById('puntos').innerText = data.puntos_totales.toFixed(6);
+                document.getElementById('stake').innerText = data.puntos_staking.toFixed(2);
+            }}
         }}
 
         async function enviarDeposito() {{
-            if (!tonConnectUI.connected) {{ alert("Conectá tu billetera primero."); return; }}
+            if (!tonConnectUI.connected) {{ alert("Conectá tu billetera."); return; }}
             const transaction = {{
                 validUntil: Math.floor(Date.now() / 1000) + 300,
-                messages: [{{ 
-                    address: "{MI_BILLETERA_RECIBO}", 
-                    amount: "100000000" 
-                }}]
+                messages: [{{ address: "{MI_BILLETERA_RECIBO}", amount: "100000000" }}]
             }};
             try {{
                 const result = await tonConnectUI.sendTransaction(transaction);
-                alert("Verificando transacción...");
-                const response = await fetch('/api/verificar_pago', {{
+                alert("Verificando... Esperá unos segundos.");
+                await fetch('/api/verificar_pago', {{
                     method: 'POST',
                     headers: {{'Content-Type': 'application/json'}},
                     body: JSON.stringify({{ user_id: userId, boc: result.boc }})
                 }});
-                const data = await response.json();
-                if (data.success) alert("¡Depósito acreditado!");
                 actualizarSaldo();
-            }} catch (e) {{ alert("Operación cancelada o rechazada."); }}
+            }} catch (e) {{ alert("Cancelado."); }}
         }}
 
         async function solicitarRetiro() {{
-            const monto = prompt("Monto a retirar (Mínimo 5 TON):");
-            if (!monto || parseFloat(monto) < 5) {{ alert("Monto inválido."); return; }}
-            const response = await fetch('/api/solicitar_retiro', {{
+            const monto = prompt("Monto (Min 5):");
+            if (!monto) return;
+            const res = await fetch('/api/solicitar_retiro', {{
                 method: 'POST',
                 headers: {{'Content-Type': 'application/json'}},
-                body: JSON.stringify({{ user_id: userId, nombre: userName, cantidad: parseFloat(monto) }})
+                body: JSON.stringify({{ user_id: userId, nombre: tg.initDataUnsafe.user.first_name, cantidad: parseFloat(monto) }})
             }});
-            const data = await response.json();
+            const data = await res.json();
             alert(data.message || data.error);
         }}
 
         async function ejecutarStake() {{
-            if (!confirm("¿Activar Staking?")) return;
             const res = await fetch('/api/stake_now', {{
                 method: 'POST',
                 headers: {{'Content-Type': 'application/json'}},
                 body: JSON.stringify({{ user_id: userId }})
             }});
-            const data = await res.json();
-            if (data.success) alert("¡Capital en Staking!");
+            if (res.ok) alert("¡Staking Activado!");
             actualizarSaldo();
         }}
 
-        if (userId) {{
-            actualizarSaldo();
-            setInterval(actualizarSaldo, 10000);
-        }}
+        if (userId) {{ actualizarSaldo(); setInterval(actualizarSaldo, 10000); }}
     </script>
 </body>
 </html>
 """
 
-# --- RUTAS DE API ---
-
+# --- RUTAS API ---
 @app.route('/')
-def home():
-    return render_template_string(HTML_JUEGO)
+def home(): return render_template_string(HTML_JUEGO)
 
 @app.route('/api/get_balance')
 def get_balance():
@@ -162,28 +136,21 @@ def get_balance():
     try:
         res_bal = db.rpc('calcular_saldo_total', {'jugador_id': int(u_id)}).execute()
         res_stk = db.table("jugadores").select("puntos_staking").eq("user_id", u_id).single().execute()
-        return {
-            "puntos_totales": float(res_bal.data) if res_bal.data else 0.0,
-            "puntos_staking": float(res_stk.data['puntos_staking']) if res_stk.data else 0.0
-        }
-    except: return {"error": "DB Error"}, 500
+        return {"puntos_totales": float(res_bal.data or 0), "puntos_staking": float(res_stk.data['puntos_staking'] or 0)}
+    except: return {"error": "Error"}, 500
 
 @app.route('/api/stake_now', methods=['POST'])
 def stake_now():
     u_id = request.get_json().get('user_id')
-    try:
-        res_bal = db.rpc('calcular_saldo_total', {'jugador_id': int(u_id)}).execute()
-        db.table("jugadores").update({
-            "puntos": 0, "puntos_staking": float(res_bal.data), "ultimo_reclamo": "now()"
-        }).eq("user_id", u_id).execute()
-        return {"success": True}
-    except Exception as e: return {"error": str(e)}, 500
+    res_bal = db.rpc('calcular_saldo_total', {'jugador_id': int(u_id)}).execute()
+    db.table("jugadores").update({"puntos": 0, "puntos_staking": float(res_bal.data), "ultimo_reclamo": "now()"}).eq("user_id", u_id).execute()
+    return {"success": True}
 
 @app.route('/api/verificar_pago', methods=['POST'])
 def verificar_pago():
     data = request.get_json()
-    u_id, boc = data.get('user_id'), data.get('boc')
-    url = f"https://toncenter.com/api/v2/getTransactions?address={MI_BILLETERA_RECIBO}&limit=10&api_key={TONCENTER_API_KEY}"
+    u_id = data.get('user_id')
+    url = f"https://toncenter.com/api/v2/getTransactions?address={MI_BILLETERA_RECIBO}&limit=5&api_key={TONCENTER_API_KEY}"
     try:
         resp = requests.get(url).json()
         if resp.get("ok"):
@@ -192,26 +159,24 @@ def verificar_pago():
                 check = db.table("pagos_procesados").select("hash").eq("hash", tx_hash).execute()
                 if not check.data and "in_msg" in tx:
                     val = int(tx["in_msg"]["value"]) / 1e9
-                    if val >= 0.09: 
+                    if val >= 0.09:
                         db.table("pagos_procesados").insert({"hash": tx_hash, "user_id": u_id, "monto": val}).execute()
                         db.rpc('acreditar_puntos', {'id_usuario': u_id, 'cantidad': val}).execute()
                         return {"success": True}
     except: pass
-    return {"success": False}, 400
+    return {"success": False}
 
 @app.route('/api/solicitar_retiro', methods=['POST'])
 async def solicitar_retiro():
     data = request.get_json()
     u_id, nombre, cantidad = data.get('user_id'), data.get('nombre'), data.get('cantidad')
-    res_bal = db.rpc('calcular_saldo_total', {'jugador_id': int(u_id)}).execute()
-    if float(res_bal.data) < cantidad: return {"error": "Saldo insuficiente."}, 400
     try:
         bot_app = Application.builder().token(TELEGRAM_TOKEN).build()
         async with bot_app:
-            msg = f"🔔 **NUEVA SOLICITUD DE RETIRO**\\nUsuario: {nombre} ({u_id})\\nCantidad: {cantidad} TON"
-            await bot_app.bot.send_message(chat_id=MI_ID_TELEGRAM, text=msg, parse_mode='Markdown')
-        return {"message": "Solicitud enviada."}
-    except: return {"error": "Error de notificación."}, 500
+            msg = f"🔔 **RETIRO vIcmAr**\nUsuario: {nombre}\nCant: {cantidad} TON"
+            await bot_app.bot.send_message(chat_id=MI_ID_TELEGRAM, text=msg)
+        return {"message": "Aviso enviado al administrador."}
+    except: return {"error": "Error de aviso."}
 
 @app.route('/api/index', methods=['POST'])
 async def bot_handler():
