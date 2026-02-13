@@ -1,5 +1,13 @@
 {
+  "version": 2,
   "rewrites": [
-    { "source": "/(.*)", "destination": "/api/index" }
+    { 
+      "source": "/tonconnect-manifest.json", 
+      "destination": "/tonconnect-manifest.json" 
+    },
+    { 
+      "source": "/(.*)", 
+      "destination": "/api/index" 
+    }
   ]
 }
