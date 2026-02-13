@@ -10,10 +10,9 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-# ⚠️ REEMPLAZAR CON TUS DATOS REALES:
+# ⚠️ REEMPLAZAR CON TUS DATOS REALES O VARIABLES DE ENTORNO:
 TONCENTER_API_KEY = "TU_API_KEY_DE_TONCENTER"  
 MI_BILLETERA_RECIBO = "TU_DIRECCION_DE_BILLETERA_TON" 
-# Esta variable debe estar configurada en el panel de Vercel:
 MI_ID_TELEGRAM = os.getenv("MI_ID_TELEGRAM") 
 
 db = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -26,7 +25,7 @@ HTML_JUEGO = f"""
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>vIcmAr Staking</title>
+    <title>vIcmAr Platinum</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
     <style>
@@ -59,7 +58,7 @@ HTML_JUEGO = f"""
         <h3>💳 MOVIMIENTOS</h3>
         <button class="btn" style="background: #2ecc71;" onclick="enviarDeposito()">DEPOSITAR (0.10 TON)</button>
         <button class="btn" style="background: #282828; border: 1px solid #444;" onclick="solicitarRetiro()">RETIRAR (Mín. 5 TON)</button>
-        <p class="info">Retiros procesados manualmente por seguridad.</p>
+        <p class="info">Retiros procesados manualmente para tu seguridad.</p>
     </div>
 
     <script>
@@ -68,6 +67,7 @@ HTML_JUEGO = f"""
         const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : null;
         const userName = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.first_name : "Usuario";
 
+        // IMPORTANTE: Asegúrate de que el manifestUrl sea accesible y correcto
         const tonConnectUI = new TON_CONNECT_UI.TonConnectUI({{
             manifestUrl: 'https://' + window.location.host + '/tonconnect-manifest.json',
             buttonRootId: 'ton-connect-button'
@@ -88,7 +88,7 @@ HTML_JUEGO = f"""
         async function enviarDeposito() {{
             if (!tonConnectUI.connected) {{ alert("Conectá tu billetera primero."); return; }}
             
-            // 0.10 TON = 100,000,000 nanoton (Enviado como string)
+            // 0.10 TON = 100,000,000 nanoton
             const transaction = {{
                 validUntil: Math.floor(Date.now() / 1000) + 300,
                 messages: [{{ 
@@ -99,7 +99,7 @@ HTML_JUEGO = f"""
             
             try {{
                 const result = await tonConnectUI.sendTransaction(transaction);
-                alert("Pago enviado. Verificando en la blockchain...");
+                alert("Verificando transacción en la red...");
                 
                 const response = await fetch('/api/verificar_pago', {{
                     method: 'POST',
@@ -109,21 +109,21 @@ HTML_JUEGO = f"""
                 
                 const data = await response.json();
                 if (data.success) alert("¡Depósito acreditado!");
-                else alert("El pago se está procesando en la red.");
+                else alert("Estamos procesando tu pago.");
                 actualizarSaldo();
             }} catch (e) {{ 
-                console.error(e);
-                alert("Operación cancelada o error de red."); 
+                console.error("Error en depósito:", e);
+                alert("Operación cancelada. Verificá tu saldo para el gas."); 
             }}
         }}
 
         async function solicitarRetiro() {{
-            const monto = prompt("¿Cuánto querés retirar? (Mínimo 5 TON):");
+            const monto = prompt("Monto a retirar (Mínimo 5 TON):");
             if (!monto) return;
             
             const numMonto = parseFloat(monto);
             if (numMonto < 5) {{
-                alert("El mínimo es de 5 TON.");
+                alert("El mínimo de retiro es de 5 TON.");
                 return;
             }}
 
@@ -138,14 +138,14 @@ HTML_JUEGO = f"""
         }}
 
         async function ejecutarStake() {{
-            if (!confirm("¿Mover todo tu saldo a Staking para ganar interés?")) return;
+            if (!confirm("¿Deseas activar el Staking sobre todo tu capital disponible?")) return;
             const res = await fetch('/api/stake_now', {{
                 method: 'POST',
                 headers: {{'Content-Type': 'application/json'}},
                 body: JSON.stringify({{ user_id: userId }})
             }});
             const data = await res.json();
-            if (data.success) alert("¡Capital puesto en Staking!");
+            if (data.success) alert("¡Interés diario activado!");
             actualizarSaldo();
         }}
 
@@ -174,7 +174,7 @@ def get_balance():
             "puntos_totales": float(res_bal.data) if res_bal.data else 0.0,
             "puntos_staking": float(res_stk.data['puntos_staking']) if res_stk.data else 0.0
         }
-    except: return {"error": "Error DB"}, 500
+    except: return {"error": "Error de base de datos"}, 500
 
 @app.route('/api/stake_now', methods=['POST'])
 def stake_now():
@@ -200,7 +200,7 @@ def verificar_pago():
                 check = db.table("pagos_procesados").select("hash").eq("hash", tx_hash).execute()
                 if not check.data and "in_msg" in tx:
                     val = int(tx["in_msg"]["value"]) / 1e9
-                    if val >= 0.09: # Margen por comisiones
+                    if val >= 0.09: 
                         db.table("pagos_procesados").insert({"hash": tx_hash, "user_id": u_id, "monto": val}).execute()
                         db.rpc('acreditar_puntos', {'id_usuario': u_id, 'cantidad': val}).execute()
                         return {"success": True}
@@ -214,16 +214,17 @@ async def solicitar_retiro():
 
     res_bal = db.rpc('calcular_saldo_total', {'jugador_id': int(u_id)}).execute()
     if float(res_bal.data) < cantidad:
-        return {"error": "Saldo insuficiente."}, 400
+        return {"error": "Saldo insuficiente para esta operación."}, 400
 
     try:
         bot_app = Application.builder().token(TELEGRAM_TOKEN).build()
         async with bot_app:
-            msg = f"🔔 **SOLICITUD DE RETIRO**\\n\\nUsuario: {nombre} ({u_id})\\nCantidad: {cantidad} TON"
+            msg = f"🔔 **NUEVA SOLICITUD DE RETIRO**\n\n👤 Usuario: {nombre} ({u_id})\n💰 Cantidad: {cantidad} TON"
             await bot_app.bot.send_message(chat_id=MI_ID_TELEGRAM, text=msg, parse_mode='Markdown')
-        return {"message": "Solicitud enviada al administrador."}
+        return {"message": "Tu solicitud ha sido enviada al administrador."}
     except Exception as e:
-        return {"error": "No se pudo enviar el aviso al admin."}, 500
+        print(f"Error Telegram: {e}")
+        return {"error": "Error al procesar la notificación de retiro."}, 500
 
 @app.route('/api/index', methods=['POST'])
 async def bot_handler():
@@ -234,8 +235,8 @@ async def bot_handler():
         u = update.effective_user
         db.table("jugadores").upsert({"user_id": u.id, "nombre": u.first_name}).execute()
         url_app = f"https://{request.host}/"
-        kb = [[InlineKeyboardButton("💎 ABRIR vIcmAr PLATINUM", web_app=WebAppInfo(url=url_app))]]
-        await update.message.reply_text(f"¡Hola {u.first_name}! 🏴‍☠️\\nMultiplica tus TON con un 1% diario.", reply_markup=InlineKeyboardMarkup(kb))
+        kb = [[InlineKeyboardButton("💎 MI BILLETERA vIcmAr", web_app=WebAppInfo(url=url_app))]]
+        await update.message.reply_text(f"¡Hola {u.first_name}! 🏴‍☠️\nMultiplica tus activos con el 1% diario de vIcmAr Platinum.", reply_markup=InlineKeyboardMarkup(kb))
 
     bot_app.add_handler(CommandHandler("start", start))
     update = Update.de_json(update_data, bot_app.bot)
