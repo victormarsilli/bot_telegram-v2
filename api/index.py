@@ -26,7 +26,7 @@ def ask_ai():
     payload = {
         "model": "llama-3.3-70b-versatile",
         "messages": [
-            {"role": "system", "content": "Eres el Gurú Cripto de vIcmAr Platinum. Ayuda a novatos. Sé breve (máximo 2 frases) y usa emojis."},
+            {"role": "system", "content": "Eres el Gurú Cripto de vIcmAr Platinum. Ayuda a novatos. Sé breve y usa emojis."},
             {"role": "user", "content": pregunta}
         ]
     }
@@ -41,7 +41,7 @@ def serve_manifest():
     res.headers.add('Access-Control-Allow-Origin', '*')
     return res
 
-# --- FRONTEND REDISEÑADO ---
+# --- FRONTEND ---
 HTML_JUEGO = f"""
 <!DOCTYPE html>
 <html>
@@ -53,168 +53,136 @@ HTML_JUEGO = f"""
     <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
     <style>
         body {{ background: #121212; color: white; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 0; overflow: hidden; }}
-        
-        /* Header Superior */
-        .top-bar {{ 
-            display: flex; justify-content: space-between; align-items: center; 
-            padding: 10px 20px; background: #1a1a1a; border-bottom: 1px solid #333;
-        }}
-        .mini-balance {{ font-size: 14px; color: #0088cc; font-weight: bold; }}
-
-        /* Pantallas */
-        .screen {{ display: none; height: calc(100vh - 60px); overflow-y: auto; padding: 20px; box-sizing: border-box; }}
+        .top-bar {{ display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; background: #1a1a1a; border-bottom: 1px solid #333; }}
+        .screen {{ display: none; height: calc(100vh - 120px); overflow-y: auto; padding: 20px; box-sizing: border-box; }}
         .active {{ display: block; }}
-
-        /* Chat UI */
-        #chat-container {{ display: flex; flex-direction: column; height: 80%; }}
-        #chat-history {{ flex-grow: 1; overflow-y: auto; text-align: left; padding: 10px; }}
-        .bubble {{ background: #222; padding: 10px; border-radius: 10px; margin-bottom: 10px; border-left: 3px solid #0088cc; }}
-        .user-bubble {{ border-left: 3px solid #2ecc71; }}
-
-        /* Botonera de Navegación */
-        .nav-bar {{ 
-            position: fixed; bottom: 0; width: 100%; height: 60px; 
-            background: #1a1a1a; display: flex; border-top: 1px solid #333;
-        }}
-        .nav-item {{ flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px; cursor: pointer; color: #888; }}
-        .nav-item.active-tab {{ color: #0088cc; }}
-
-        /* Splash */
-        #splash {{ position: fixed; top: 0; width: 100%; height: 100%; background: #121212; z-index: 10000; display: flex; justify-content: center; align-items: center; transition: 0.8s; }}
-        
-        .card {{ background: #1e1e1e; padding: 20px; border-radius: 15px; margin-bottom: 15px; border: 1px solid #333; }}
-        .btn {{ background: #0088cc; color: white; border: none; padding: 15px; border-radius: 12px; width: 100%; font-weight: bold; margin-top: 10px; }}
-        input {{ width: 80%; padding: 10px; border-radius: 10px; border: 1px solid #444; background: #222; color: white; }}
+        .card {{ background: #1e1e1e; padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #333; position: relative; }}
+        .tier-tag {{ position: absolute; top: 10px; right: 10px; background: #0088cc; padding: 2px 8px; border-radius: 5px; font-size: 10px; font-weight: bold; }}
+        .locked {{ opacity: 0.4; filter: grayscale(1); }}
+        .btn {{ background: #0088cc; color: white; border: none; padding: 12px; border-radius: 10px; width: 100%; font-weight: bold; margin-top: 5px; cursor: pointer; }}
+        .nav-bar {{ position: fixed; bottom: 0; width: 100%; height: 60px; background: #1a1a1a; display: flex; border-top: 1px solid #333; }}
+        .nav-item {{ flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px; color: #888; }}
+        .active-tab {{ color: #0088cc; }}
+        #chat-history {{ height: 250px; overflow-y: auto; text-align: left; margin-bottom: 10px; }}
+        .bubble {{ background: #222; padding: 10px; border-radius: 10px; margin-bottom: 8px; border-left: 3px solid #0088cc; font-size: 14px; }}
+        #ref-link {{ background: #111; padding: 8px; border-radius: 5px; font-size: 10px; color: #0088cc; border: 1px dashed #444; margin-top: 5px; word-break: break-all; }}
     </style>
 </head>
 <body>
-
-    <div id="splash"><h1>vIcmAr</h1></div>
-
     <div class="top-bar">
-        <div class="mini-balance">Saldo: <span id="val-top">0.00</span> TON</div>
+        <div style="font-size: 14px; color: #0088cc; font-weight: bold;">vIcmAr: <span id="val-top">0.00</span></div>
         <div id="ton-connect-button"></div>
     </div>
 
     <div id="home-screen" class="screen active">
-        <div id="chat-container">
-            <div id="chat-history">
-                <div class="bubble">¡Hola! Soy tu Gurú de vIcmAr. Preguntame lo que quieras sobre TON.</div>
-            </div>
-            <div style="display: flex; gap: 5px;">
-                <input type="text" id="ai-input" placeholder="Escribe tu duda...">
-                <button onclick="preguntarIA()" style="background:#0088cc; border:none; border-radius:10px; width:50px; color:white;">→</button>
-            </div>
+        <div id="chat-history">
+            <div class="bubble">Bienvenido a vIcmAr Platinum. ¿En qué puedo ayudarte hoy? 🚀</div>
+        </div>
+        <div style="display:flex; gap:5px;">
+            <input type="text" id="ai-input" style="flex-grow:1; background:#222; border:1px solid #444; color:white; padding:10px; border-radius:10px;" placeholder="Duda sobre TON...">
+            <button onclick="preguntarIA()" style="background:#0088cc; border:none; padding:10px 15px; border-radius:10px; color:white;">→</button>
         </div>
     </div>
 
     <div id="wallet-screen" class="screen">
         <div class="card">
-            <p style="color:#888; margin:0;">BALANCE DISPONIBLE</p>
-            <h2 id="puntos">0.000000</h2>
-            <p style="color:#0088cc; margin:0;">STAKING ACTIVO: <span id="stake">0.00</span> TON</p>
+            <span class="tier-tag">NIVEL 1%</span>
+            <div style="font-size: 12px; color: #888;">SALDO DISPONIBLE</div>
+            <div style="font-size: 24px; font-weight: bold;"><span id="puntos">0.0000</span> TON</div>
+            <p style="color:#2ecc71; font-size:12px; margin:5px 0;">Generando 1% diario automáticamente.</p>
         </div>
+
         <div class="card">
-            <h3>🏦 vIcmAr Stake</h3>
-            <p style="font-size: 13px; color:#aaa;">Gana 1% diario acumulado sobre tu capital.</p>
-            <button class="btn" onclick="ejecutarStake()">PASAR TODO A STAKE</button>
+            <span class="tier-tag" style="background:#f1c40f; color:black;">STAKE 5%</span>
+            <div style="font-size: 12px; color: #888;">EN STAKING</div>
+            <div style="font-size: 24px; font-weight: bold;"><span id="stake">0.0000</span> TON</div>
+            <button class="btn" onclick="ejecutarStake()">PASAR TODO A STAKE (5%)</button>
         </div>
-        <button class="btn" style="background:#2ecc71;" onclick="enviarDeposito()">DEPOSITAR (0.10 TON)</button>
+
+        <div id="card-vip" class="card locked">
+            <span class="tier-tag" style="background:#e74c3c;">VIP 20%</span>
+            <div style="color:#e74c3c; font-weight:bold;">MODO VIRAL ACTIVADO</div>
+            <div id="ref-status" style="font-size: 12px; margin: 5px 0;">Referidos: 0 / 5</div>
+            <div id="ref-link">Cargando...</div>
+            <button class="btn" onclick="compartir()">INVITAR AMIGOS</button>
+        </div>
+
+        <button class="btn" style="background:#2ecc71; margin-top:10px;" onclick="enviarDeposito()">DEPOSITAR (0.10 TON)</button>
         <button class="btn" style="background:#222; border:1px solid #444;" onclick="solicitarRetiro()">RETIRAR</button>
     </div>
 
     <div class="nav-bar">
-        <div class="nav-item active-tab" onclick="switchTab('home')">
-            <span>🤖</span><span>Asistente</span>
-        </div>
-        <div class="nav-item" onclick="switchTab('wallet')">
-            <span>💳</span><span>Wallet</span>
-        </div>
+        <div class="nav-item active-tab" onclick="switchTab('home')"><span>🤖</span><span>Asistente</span></div>
+        <div class="nav-item" onclick="switchTab('wallet')"><span>💳</span><span>Inversión</span></div>
     </div>
 
     <script>
         const tg = window.Telegram.WebApp;
+        const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : 123;
         const tonConnectUI = new TON_CONNECT_UI.TonConnectUI({{
             manifestUrl: 'https://bot-telegram-v2-gmny.vercel.app/tonconnect-manifest.json',
             buttonRootId: 'ton-connect-button'
         }});
 
-        function switchTab(tab) {{
+        // Link de Referido
+        const botUsername = "DeposiTon"; // <-- CAMBIA ESTO
+        const refLink = `https://t.me/${{botUsername}}?start=${{userId}}`;
+        document.getElementById('ref-link').innerText = refLink;
+
+        function switchTab(t) {{
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
             document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active-tab'));
-            
-            if(tab === 'home') {{
-                document.getElementById('home-screen').classList.add('active');
-                document.querySelectorAll('.nav-item')[0].classList.add('active-tab');
-            }} else {{
-                document.getElementById('wallet-screen').classList.add('active');
-                document.querySelectorAll('.nav-item')[1].classList.add('active-tab');
-            }}
+            if(t==='home') {{ document.getElementById('home-screen').classList.add('active'); document.querySelectorAll('.nav-item')[0].classList.add('active-tab'); }}
+            else {{ document.getElementById('wallet-screen').classList.add('active'); document.querySelectorAll('.nav-item')[1].classList.add('active-tab'); }}
         }}
 
         async function preguntarIA() {{
-            const input = document.getElementById('ai-input');
-            const history = document.getElementById('chat-history');
-            if(!input.value) return;
-            
-            history.innerHTML += `<div class="bubble user-bubble">${{input.value}}</div>`;
-            const val = input.value;
-            input.value = "";
-            
-            const res = await fetch('/api/ask_ai', {{
-                method: 'POST',
-                headers: {{'Content-Type': 'application/json'}},
-                body: JSON.stringify({{ pregunta: val }})
-            }});
+            const inp = document.getElementById('ai-input');
+            const hist = document.getElementById('chat-history');
+            if(!inp.value) return;
+            const q = inp.value; inp.value = "";
+            hist.innerHTML += `<div class="bubble" style="border-left-color:#2ecc71;">${{q}}</div>`;
+            const res = await fetch('/api/ask_ai', {{ method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify({{ pregunta: q }}) }});
             const data = await res.json();
-            history.innerHTML += `<div class="bubble">${{data.respuesta}}</div>`;
-            history.scrollTop = history.scrollHeight;
+            hist.innerHTML += `<div class="bubble">${{data.respuesta}}</div>`;
+            hist.scrollTop = hist.scrollHeight;
         }}
 
         async function actualizarSaldo() {{
-            const res = await fetch(`/api/get_balance?user_id=${{tg.initDataUnsafe.user.id}}`);
+            const res = await fetch(`/api/get_balance?user_id=${{userId}}`);
             const data = await res.json();
             document.getElementById('puntos').innerText = data.puntos_totales.toFixed(6);
             document.getElementById('val-top').innerText = data.puntos_totales.toFixed(2);
-            document.getElementById('stake').innerText = data.puntos_staking.toFixed(2);
+            document.getElementById('stake').innerText = data.puntos_staking.toFixed(4);
+            document.getElementById('ref-status').innerText = `Referidos: ${{data.referidos_count}} / 5`;
+            if(data.referidos_count >= 5) document.getElementById('card-vip').classList.remove('locked');
+        }}
+
+        function compartir() {{
+            const text = "💎 Sumate a vIcmAr Platinum y ganá un 20% diario. Entrá acá: ";
+            window.open(`https://t.me/share/url?url=${{encodeURIComponent(refLink)}}&text=${{encodeURIComponent(text)}}`);
         }}
 
         async function enviarDeposito() {{
-            if (!tonConnectUI.connected) {{ alert("Conecta tu wallet."); return; }}
-            const transaction = {{
-                validUntil: Math.floor(Date.now() / 1000) + 300,
-                messages: [{{ address: "{MI_BILLETERA_RECIBO}", amount: "100000000" }}]
-            }};
+            if (!tonConnectUI.connected) {{ alert("Wallet no conectada."); return; }}
+            const tx = {{ validUntil: Math.floor(Date.now()/1000)+300, messages: [{{ address: "{MI_BILLETERA_RECIBO}", amount: "100000000" }}] }};
             try {{
-                const result = await tonConnectUI.sendTransaction(transaction);
-                await fetch('/api/verificar_pago', {{
-                    method: 'POST',
-                    headers: {{'Content-Type': 'application/json'}},
-                    body: JSON.stringify({{ user_id: tg.initDataUnsafe.user.id, boc: result.boc }})
-                }});
+                const result = await tonConnectUI.sendTransaction(tx);
+                await fetch('/api/verificar_pago', {{ method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify({{ user_id: userId, boc: result.boc }}) }});
                 actualizarSaldo();
-            }} catch (e) {{ alert("Cancelado."); }}
-        }}
-
-        async function solicitarRetiro() {{
-            const m = prompt("Monto:");
-            await fetch('/api/solicitar_retiro', {{
-                method: 'POST',
-                headers: {{'Content-Type': 'application/json'}},
-                body: JSON.stringify({{ user_id: tg.initDataUnsafe.user.id, nombre: tg.initDataUnsafe.user.first_name, cantidad: parseFloat(m) }})
-            }});
+            }} catch(e) {{ alert("Cancelado"); }}
         }}
 
         async function ejecutarStake() {{
-            await fetch('/api/stake_now', {{
-                method: 'POST',
-                headers: {{'Content-Type': 'application/json'}},
-                body: JSON.stringify({{ user_id: tg.initDataUnsafe.user.id }})
-            }});
+            await fetch('/api/stake_now', {{ method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify({{ user_id: userId }}) }});
             actualizarSaldo();
         }}
 
-        setTimeout(() => {{ document.getElementById('splash').style.opacity = '0'; setTimeout(()=>{{document.getElementById('splash').style.display='none'}},800)}}, 2000);
+        async function solicitarRetiro() {{
+            const m = prompt("Monto a retirar:");
+            if(m) await fetch('/api/solicitar_retiro', {{ method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify({{ user_id: userId, nombre: tg.initDataUnsafe.user.first_name, cantidad: m }}) }});
+        }}
+
         setInterval(actualizarSaldo, 10000);
         actualizarSaldo();
     </script>
@@ -222,7 +190,7 @@ HTML_JUEGO = f"""
 </html>
 """
 
-# --- RUTAS DE API (Igual que antes) ---
+# --- RUTAS API ---
 @app.route('/')
 def home(): return render_template_string(HTML_JUEGO)
 
@@ -230,8 +198,12 @@ def home(): return render_template_string(HTML_JUEGO)
 def get_balance():
     u_id = request.args.get('user_id')
     res_bal = db.rpc('calcular_saldo_total', {'jugador_id': int(u_id)}).execute()
-    res_stk = db.table("jugadores").select("puntos_staking").eq("user_id", u_id).single().execute()
-    return {"puntos_totales": float(res_bal.data or 0), "puntos_staking": float(res_stk.data['puntos_staking'] or 0)}
+    res_data = db.table("jugadores").select("puntos_staking, referidos_count").eq("user_id", u_id).single().execute()
+    return {
+        "puntos_totales": float(res_bal.data or 0), 
+        "puntos_staking": float(res_data.data['puntos_staking'] or 0),
+        "referidos_count": int(res_data.data['referidos_count'] or 0)
+    }
 
 @app.route('/api/stake_now', methods=['POST'])
 def stake_now():
@@ -257,24 +229,24 @@ def verificar_pago():
                     return {"success": True}
     return {"success": False}
 
-@app.route('/api/solicitar_retiro', methods=['POST'])
-async def solicitar_retiro():
-    data = request.get_json()
-    bot_app = Application.builder().token(TELEGRAM_TOKEN).build()
-    async with bot_app:
-        await bot_app.bot.send_message(chat_id=MI_ID_TELEGRAM, text=f"🔔 RETIRO: {data.get('nombre')} - {data.get('cantidad')} TON")
-    return {"message": "Solicitud enviada."}
-
 @app.route('/api/index', methods=['POST'])
 async def bot_handler():
     update_data = request.get_json(force=True)
     bot_app = Application.builder().token(TELEGRAM_TOKEN).build()
     async def start(update, context):
         u = update.effective_user
+        # Lógica de Referidos
+        if context.args and context.args[0].isdigit():
+            referrer_id = int(context.args[0])
+            if referrer_id != u.id:
+                db.rpc('sumar_referido', {'id_padre': referrer_id}).execute()
+        
         db.table("jugadores").upsert({"user_id": u.id, "nombre": u.first_name}).execute()
         kb = [[InlineKeyboardButton("💎 vIcmAr Platinum", web_app=WebAppInfo(url=f"https://{request.host}/"))]]
-        await update.message.reply_text(f"Hola {u.first_name}! 🏴‍☠️ Bienvenido.", reply_markup=InlineKeyboardMarkup(kb))
+        await update.message.reply_text(f"Hola {u.first_name}! 🏴‍☠️ Bienvenido al sistema Platinum.", reply_markup=InlineKeyboardMarkup(kb))
+    
     bot_app.add_handler(CommandHandler("start", start))
     update = Update.de_json(update_data, bot_app.bot)
     async with bot_app: await bot_app.process_update(update)
     return "ok", 200
+``` 🏴‍☠️💎🔥
