@@ -5,19 +5,41 @@ from telegram import Update, WebAppInfo, InlineKeyboardButton, InlineKeyboardMar
 from telegram.ext import Application, CommandHandler
 from supabase import create_client
 
-# --- CONFIGURACIÓN DE VARIABLES (Leídas desde Vercel) ---
+# --- CONFIGURACIÓN ---
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 MI_ID_TELEGRAM = os.getenv("MI_ID_TELEGRAM")
-# Si en Vercel la llamaste "TU_DIRECCION_DE_BILLETERA_TON", usá ese nombre aquí:
 MI_BILLETERA_RECIBO = os.getenv("TU_DIRECCION_DE_BILLETERA_TON") 
 TONCENTER_API_KEY = os.getenv("TONCENTER_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY") # <--- La de nuestro primer proyecto
 
 db = create_client(SUPABASE_URL, SUPABASE_KEY)
 app = Flask(__name__)
 
-# --- MANIFIESTO DINÁMICO ---
+# --- RUTA PARA LA IA (GROQ) ---
+@app.route('/api/ask_ai', methods=['POST'])
+def ask_ai():
+    pregunta = request.get_json().get('pregunta')
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "llama-3.3-70b-versatile",
+        "messages": [
+            {"role": "system", "content": "Eres el experto cripto de vIcmAr Platinum. Responde de forma breve, canchera y ayuda a los novatos a entender TON y el staking. No uses más de 3 frases."},
+            {"role": "user", "content": pregunta}
+        ]
+    }
+    try:
+        resp = requests.post(url, json=payload, headers=headers).json()
+        respuesta = resp['choices'][0]['message']['content']
+        return jsonify({"respuesta": respuesta})
+    except:
+        return jsonify({"respuesta": "El gurú está meditando. Reintentá en un toque."})
+
 @app.route('/tonconnect-manifest.json')
 def serve_manifest():
     response = jsonify({
@@ -39,36 +61,92 @@ HTML_JUEGO = f"""
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
     <style>
-        body {{ background: #121212; color: white; font-family: 'Segoe UI', sans-serif; text-align: center; margin: 0; padding-bottom: 50px; }}
+        body {{ background: #121212; color: white; font-family: 'Segoe UI', sans-serif; text-align: center; margin: 0; }}
+        
+        /* Pantalla de Carga */
+        #splash {{ 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: #121212; display: flex; flex-direction: column; 
+            justify-content: center; align-items: center; z-index: 9999; 
+            transition: opacity 0.8s ease;
+        }}
+        .logo-anim {{ font-size: 40px; font-weight: bold; color: #0088cc; margin-bottom: 20px; letter-spacing: 5px; animation: pulse 1.5s infinite; }}
+        @keyframes pulse {{ 0% {{ opacity: 0.5; }} 50% {{ opacity: 1; }} 100% {{ opacity: 0.5; }} }}
+
         .card {{ background: #1e1e1e; margin: 15px; padding: 20px; border-radius: 15px; border: 1px solid #333; }}
-        .balance {{ font-size: 38px; color: #0088cc; font-weight: bold; margin: 10px 0; }}
-        .btn {{ background: #0088cc; color: white; border: none; padding: 15px; border-radius: 12px; font-weight: bold; width: 90%; margin: 10px 0; cursor: pointer; font-size: 16px; }}
+        .balance {{ font-size: 35px; color: #0088cc; font-weight: bold; }}
+        .btn {{ background: #0088cc; color: white; border: none; padding: 12px; border-radius: 10px; font-weight: bold; width: 90%; margin: 5px; }}
+
+        /* Chat IA Style */
+        #ai-box {{ background: #1a1a1a; border-radius: 15px; margin: 15px; padding: 15px; border: 1px solid #0088cc55; text-align: left; }}
+        #ai-msg {{ font-size: 14px; color: #ccc; min-height: 30px; margin-bottom: 10px; border-left: 3px solid #0088cc; padding-left: 10px; }}
+        .ai-input-group {{ display: flex; gap: 5px; }}
+        input {{ flex-grow: 1; background: #222; border: 1px solid #444; color: white; padding: 8px; border-radius: 8px; }}
     </style>
 </head>
 <body>
-    <div id="ton-connect-button"></div>
-    <div class="card">
-        <span style="color: #888; font-size: 12px;">BALANCE ESTIMADO</span>
-        <div class="balance"><span id="puntos">0.0000</span> TON</div>
-        <p style="color: #aaa; font-size: 14px;">Staking: <span id="stake">0.00</span> TON</p>
+    <div id="splash">
+        <div class="logo-anim">vIcmAr</div>
+        <p style="color: #666; letter-spacing: 2px;">PLATINUM SYSTEM</p>
     </div>
-    <div class="card">
-        <h3>🏦 vIcmAr PLATINUM</h3>
-        <button class="btn" onclick="ejecutarStake()">ACTIVAR STAKING</button>
-    </div>
-    <div class="card">
-        <h3>💳 MOVIMIENTOS</h3>
-        <button class="btn" style="background: #2ecc71;" onclick="enviarDeposito()">DEPOSITAR (0.10 TON)</button>
-        <button class="btn" style="background: #282828; border: 1px solid #444;" onclick="solicitarRetiro()">RETIRAR (Mín. 5 TON)</button>
+
+    <div id="main-content" style="display:none;">
+        <div id="ton-connect-button" style="display:flex; justify-content:center; padding: 20px 0;"></div>
+        
+        <div class="card">
+            <span style="font-size: 12px; color: #888;">SALDO TOTAL</span>
+            <div class="balance"><span id="puntos">0.0000</span> TON</div>
+            <p style="font-size: 13px; color: #aaa;">En Staking: <span id="stake">0.00</span></p>
+        </div>
+
+        <div id="ai-box">
+            <div style="font-weight: bold; color: #0088cc; font-size: 12px; margin-bottom: 5px;">GURÚ CRIPTO vIcmAr</div>
+            <div id="ai-msg">¡Hola! Tirame cualquier duda sobre TON o el Staking.</div>
+            <div class="ai-input-group">
+                <input type="text" id="ai-input" placeholder="¿Cómo retiro?">
+                <button onclick="preguntarIA()" style="background:#0088cc; border:none; border-radius:8px; padding:0 15px; color:white;">→</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <button class="btn" onclick="ejecutarStake()">ACTIVAR STAKING</button>
+            <button class="btn" style="background:#2ecc71;" onclick="enviarDeposito()">DEPOSITAR (0.10)</button>
+            <button class="btn" style="background:#222; border: 1px solid #444;" onclick="solicitarRetiro()">RETIRAR</button>
+        </div>
     </div>
 
     <script>
+        // Lógica Splash
+        setTimeout(() => {{
+            const splash = document.getElementById('splash');
+            splash.style.opacity = '0';
+            setTimeout(() => {{
+                splash.style.display = 'none';
+                document.getElementById('main-content').style.display = 'block';
+            }}, 800);
+        }}, 2500);
+
         const tg = window.Telegram.WebApp;
         const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : null;
         const tonConnectUI = new TON_CONNECT_UI.TonConnectUI({{
             manifestUrl: 'https://bot-telegram-v2-gmny.vercel.app/tonconnect-manifest.json',
             buttonRootId: 'ton-connect-button'
         }});
+
+        async function preguntarIA() {{
+            const input = document.getElementById('ai-input');
+            const msg = document.getElementById('ai-msg');
+            if (!input.value) return;
+            msg.innerText = "Consultando a la red...";
+            const res = await fetch('/api/ask_ai', {{
+                method: 'POST',
+                headers: {{'Content-Type': 'application/json'}},
+                body: JSON.stringify({{ pregunta: input.value }})
+            }});
+            const data = await res.json();
+            msg.innerText = data.respuesta;
+            input.value = "";
+        }}
 
         async function actualizarSaldo() {{
             if (!userId) return;
@@ -80,15 +158,15 @@ HTML_JUEGO = f"""
             }}
         }}
 
+        // (Funciones de pago y retiro se mantienen igual que la versión estable anterior)
         async function enviarDeposito() {{
-            if (!tonConnectUI.connected) {{ alert("Conectá tu billetera."); return; }}
+            if (!tonConnectUI.connected) {{ alert("Conectá la wallet."); return; }}
             const transaction = {{
                 validUntil: Math.floor(Date.now() / 1000) + 300,
                 messages: [{{ address: "{MI_BILLETERA_RECIBO}", amount: "100000000" }}]
             }};
             try {{
                 const result = await tonConnectUI.sendTransaction(transaction);
-                alert("Verificando... Esperá unos segundos.");
                 await fetch('/api/verificar_pago', {{
                     method: 'POST',
                     headers: {{'Content-Type': 'application/json'}},
@@ -99,7 +177,7 @@ HTML_JUEGO = f"""
         }}
 
         async function solicitarRetiro() {{
-            const monto = prompt("Monto (Min 5):");
+            const monto = prompt("Monto a retirar:");
             if (!monto) return;
             const res = await fetch('/api/solicitar_retiro', {{
                 method: 'POST',
@@ -111,12 +189,11 @@ HTML_JUEGO = f"""
         }}
 
         async function ejecutarStake() {{
-            const res = await fetch('/api/stake_now', {{
+            await fetch('/api/stake_now', {{
                 method: 'POST',
                 headers: {{'Content-Type': 'application/json'}},
                 body: JSON.stringify({{ user_id: userId }})
             }});
-            if (res.ok) alert("¡Staking Activado!");
             actualizarSaldo();
         }}
 
@@ -126,7 +203,7 @@ HTML_JUEGO = f"""
 </html>
 """
 
-# --- RUTAS API ---
+# --- EL RESTO DE RUTAS IGUAL QUE LA VERSIÓN FUNCIONAL ---
 @app.route('/')
 def home(): return render_template_string(HTML_JUEGO)
 
@@ -137,7 +214,7 @@ def get_balance():
         res_bal = db.rpc('calcular_saldo_total', {'jugador_id': int(u_id)}).execute()
         res_stk = db.table("jugadores").select("puntos_staking").eq("user_id", u_id).single().execute()
         return {"puntos_totales": float(res_bal.data or 0), "puntos_staking": float(res_stk.data['puntos_staking'] or 0)}
-    except: return {"error": "Error"}, 500
+    except: return {"error": "DB Error"}, 500
 
 @app.route('/api/stake_now', methods=['POST'])
 def stake_now():
@@ -173,10 +250,10 @@ async def solicitar_retiro():
     try:
         bot_app = Application.builder().token(TELEGRAM_TOKEN).build()
         async with bot_app:
-            msg = f"🔔 **RETIRO vIcmAr**\nUsuario: {nombre}\nCant: {cantidad} TON"
+            msg = f"🔔 **RETIRO vIcmAr**\nUsuario: {nombre} ({u_id})\nCant: {cantidad} TON"
             await bot_app.bot.send_message(chat_id=MI_ID_TELEGRAM, text=msg)
-        return {"message": "Aviso enviado al administrador."}
-    except: return {"error": "Error de aviso."}
+        return {"message": "Solicitud enviada al admin."}
+    except: return {"error": "Error de envío."}
 
 @app.route('/api/index', methods=['POST'])
 async def bot_handler():
@@ -186,7 +263,7 @@ async def bot_handler():
         u = update.effective_user
         db.table("jugadores").upsert({"user_id": u.id, "nombre": u.first_name}).execute()
         kb = [[InlineKeyboardButton("💎 MI BILLETERA vIcmAr", web_app=WebAppInfo(url=f"https://{request.host}/"))]]
-        await update.message.reply_text(f"¡Hola {u.first_name}! 🏴‍☠️\\nMultiplica tus TON en vIcmAr Platinum.", reply_markup=InlineKeyboardMarkup(kb))
+        await update.message.reply_text(f"¡Hola {u.first_name}! 🏴‍☠️\\nBienvenido a vIcmAr Platinum.", reply_markup=InlineKeyboardMarkup(kb))
     bot_app.add_handler(CommandHandler("start", start))
     update = Update.de_json(update_data, bot_app.bot)
     async with bot_app: await bot_app.process_update(update)
