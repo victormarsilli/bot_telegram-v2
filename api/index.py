@@ -5,11 +5,12 @@ from telegram import Update, WebAppInfo, InlineKeyboardButton, InlineKeyboardMar
 from telegram.ext import Application, CommandHandler
 from supabase import create_client
 
-# --- CONFIGURACIÓN ---
+# --- CONFIGURACIÓN DE VARIABLES (Leídas desde Vercel) ---
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 MI_ID_TELEGRAM = os.getenv("MI_ID_TELEGRAM")
+# Asegúrate de que esta variable coincida con el nombre en Vercel:
 MI_BILLETERA_RECIBO = os.getenv("TU_DIRECCION_DE_BILLETERA_TON") 
 TONCENTER_API_KEY = os.getenv("TONCENTER_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -26,18 +27,24 @@ def ask_ai():
     payload = {
         "model": "llama-3.3-70b-versatile",
         "messages": [
-            {"role": "system", "content": "Eres el Gurú Cripto de vIcmAr Platinum. Ayuda a novatos. Sé breve y usa emojis."},
+            {"role": "system", "content": "Eres el Gurú Cripto de vIcmAr Platinum. Ayuda a novatos. Sé breve (máximo 2 frases) y usa emojis."},
             {"role": "user", "content": pregunta}
         ]
     }
     try:
         resp = requests.post(url, json=payload, headers=headers).json()
         return jsonify({"respuesta": resp['choices'][0]['message']['content']})
-    except: return jsonify({"respuesta": "Gurú fuera de línea 🧘"}), 500
+    except:
+        return jsonify({"respuesta": "Gurú fuera de línea 🧘"}), 500
 
+# --- MANIFIESTO ---
 @app.route('/tonconnect-manifest.json')
 def serve_manifest():
-    res = jsonify({"url": "https://bot-telegram-v2-gmny.vercel.app","name": "vIcmAr Platinum","iconUrl": "https://bot-telegram-v2-gmny.vercel.app/icon.png"})
+    res = jsonify({
+        "url": "https://bot-telegram-v2-gmny.vercel.app",
+        "name": "vIcmAr Platinum",
+        "iconUrl": "https://bot-telegram-v2-gmny.vercel.app/icon.png"
+    })
     res.headers.add('Access-Control-Allow-Origin', '*')
     return res
 
@@ -124,16 +131,21 @@ HTML_JUEGO = f"""
             buttonRootId: 'ton-connect-button'
         }});
 
-        // Link de Referido
-        const botUsername = "DeposiTon"; // <-- CAMBIA ESTO
-        const refLink = `https://t.me/${{botUsername}}?start=${{userId}}`;
+        // Link de Referido (Asegúrate de cambiar TU_BOT_USERNAME)
+        const refLink = `https://t.me/TU_BOT_USERNAME?start=${{userId}}`;
         document.getElementById('ref-link').innerText = refLink;
 
         function switchTab(t) {{
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
             document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active-tab'));
-            if(t==='home') {{ document.getElementById('home-screen').classList.add('active'); document.querySelectorAll('.nav-item')[0].classList.add('active-tab'); }}
-            else {{ document.getElementById('wallet-screen').classList.add('active'); document.querySelectorAll('.nav-item')[1].classList.add('active-tab'); }}
+            if(t==='home') {{ 
+                document.getElementById('home-screen').classList.add('active'); 
+                document.querySelectorAll('.nav-item')[0].classList.add('active-tab'); 
+            }}
+            else {{ 
+                document.getElementById('wallet-screen').classList.add('active'); 
+                document.querySelectorAll('.nav-item')[1].classList.add('active-tab'); 
+            }}
         }}
 
         async function preguntarIA() {{
@@ -142,7 +154,11 @@ HTML_JUEGO = f"""
             if(!inp.value) return;
             const q = inp.value; inp.value = "";
             hist.innerHTML += `<div class="bubble" style="border-left-color:#2ecc71;">${{q}}</div>`;
-            const res = await fetch('/api/ask_ai', {{ method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify({{ pregunta: q }}) }});
+            const res = await fetch('/api/ask_ai', {{ 
+                method: 'POST', 
+                headers: {{'Content-Type': 'application/json'}}, 
+                body: JSON.stringify({{ pregunta: q }}) 
+            }});
             const data = await res.json();
             hist.innerHTML += `<div class="bubble">${{data.respuesta}}</div>`;
             hist.scrollTop = hist.scrollHeight;
@@ -159,28 +175,43 @@ HTML_JUEGO = f"""
         }}
 
         function compartir() {{
-            const text = "💎 Sumate a vIcmAr Platinum y ganá un 20% diario. Entrá acá: ";
+            const text = "💎 Sumate a vIcmAr Platinum y ganá un 20% diario.";
             window.open(`https://t.me/share/url?url=${{encodeURIComponent(refLink)}}&text=${{encodeURIComponent(text)}}`);
         }}
 
         async function enviarDeposito() {{
             if (!tonConnectUI.connected) {{ alert("Wallet no conectada."); return; }}
-            const tx = {{ validUntil: Math.floor(Date.now()/1000)+300, messages: [{{ address: "{MI_BILLETERA_RECIBO}", amount: "100000000" }}] }};
+            const tx = {{ 
+                validUntil: Math.floor(Date.now()/1000)+300, 
+                messages: [{{ address: "{MI_BILLETERA_RECIBO}", amount: "100000000" }}] 
+            }};
             try {{
                 const result = await tonConnectUI.sendTransaction(tx);
-                await fetch('/api/verificar_pago', {{ method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify({{ user_id: userId, boc: result.boc }}) }});
+                await fetch('/api/verificar_pago', {{ 
+                    method: 'POST', 
+                    headers: {{'Content-Type': 'application/json'}}, 
+                    body: JSON.stringify({{ user_id: userId, boc: result.boc }}) 
+                }});
                 actualizarSaldo();
             }} catch(e) {{ alert("Cancelado"); }}
         }}
 
         async function ejecutarStake() {{
-            await fetch('/api/stake_now', {{ method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify({{ user_id: userId }}) }});
+            await fetch('/api/stake_now', {{ 
+                method: 'POST', 
+                headers: {{'Content-Type': 'application/json'}}, 
+                body: JSON.stringify({{ user_id: userId }}) 
+            }});
             actualizarSaldo();
         }}
 
         async function solicitarRetiro() {{
             const m = prompt("Monto a retirar:");
-            if(m) await fetch('/api/solicitar_retiro', {{ method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify({{ user_id: userId, nombre: tg.initDataUnsafe.user.first_name, cantidad: m }}) }});
+            if(m) await fetch('/api/solicitar_retiro', {{ 
+                method: 'POST', 
+                headers: {{'Content-Type': 'application/json'}}, 
+                body: JSON.stringify({{ user_id: userId, nombre: tg.initDataUnsafe.user.first_name, cantidad: m }}) 
+            }});
         }}
 
         setInterval(actualizarSaldo, 10000);
@@ -192,61 +223,93 @@ HTML_JUEGO = f"""
 
 # --- RUTAS API ---
 @app.route('/')
-def home(): return render_template_string(HTML_JUEGO)
+def home(): 
+    return render_template_string(HTML_JUEGO)
 
 @app.route('/api/get_balance')
 def get_balance():
     u_id = request.args.get('user_id')
-    res_bal = db.rpc('calcular_saldo_total', {'jugador_id': int(u_id)}).execute()
-    res_data = db.table("jugadores").select("puntos_staking, referidos_count").eq("user_id", u_id).single().execute()
-    return {
-        "puntos_totales": float(res_bal.data or 0), 
-        "puntos_staking": float(res_data.data['puntos_staking'] or 0),
-        "referidos_count": int(res_data.data['referidos_count'] or 0)
-    }
+    try:
+        res_bal = db.rpc('calcular_saldo_total', {'jugador_id': int(u_id)}).execute()
+        res_data = db.table("jugadores").select("puntos_staking, referidos_count").eq("user_id", u_id).single().execute()
+        return {
+            "puntos_totales": float(res_bal.data or 0), 
+            "puntos_staking": float(res_data.data['puntos_staking'] or 0),
+            "referidos_count": int(res_data.data['referidos_count'] or 0)
+        }
+    except:
+        return {"error": "Error de base de datos"}, 500
 
 @app.route('/api/stake_now', methods=['POST'])
 def stake_now():
     u_id = request.get_json().get('user_id')
-    res_bal = db.rpc('calcular_saldo_total', {'jugador_id': int(u_id)}).execute()
-    db.table("jugadores").update({"puntos": 0, "puntos_staking": float(res_bal.data), "ultimo_reclamo": "now()"}).eq("user_id", u_id).execute()
-    return {"success": True}
+    try:
+        res_bal = db.rpc('calcular_saldo_total', {'jugador_id': int(u_id)}).execute()
+        db.table("jugadores").update({
+            "puntos": 0, 
+            "puntos_staking": float(res_bal.data), 
+            "ultimo_reclamo": "now()"
+        }).eq("user_id", u_id).execute()
+        return {"success": True}
+    except:
+        return {"success": False}, 500
 
 @app.route('/api/verificar_pago', methods=['POST'])
 def verificar_pago():
     data = request.get_json()
+    u_id = data.get('user_id')
     url = f"https://toncenter.com/api/v2/getTransactions?address={MI_BILLETERA_RECIBO}&limit=5&api_key={TONCENTER_API_KEY}"
-    resp = requests.get(url).json()
-    if resp.get("ok"):
-        for tx in resp.get("result", []):
-            tx_hash = tx["transaction_id"]["hash"]
-            check = db.table("pagos_procesados").select("hash").eq("hash", tx_hash).execute()
-            if not check.data and "in_msg" in tx:
-                val = int(tx["in_msg"]["value"]) / 1e9
-                if val >= 0.09:
-                    db.table("pagos_procesados").insert({"hash": tx_hash, "user_id": data.get('user_id'), "monto": val}).execute()
-                    db.rpc('acreditar_puntos', {'id_usuario': data.get('user_id'), 'cantidad': val}).execute()
-                    return {"success": True}
+    try:
+        resp = requests.get(url).json()
+        if resp.get("ok"):
+            for tx in resp.get("result", []):
+                tx_hash = tx["transaction_id"]["hash"]
+                check = db.table("pagos_procesados").select("hash").eq("hash", tx_hash).execute()
+                if not check.data and "in_msg" in tx:
+                    val = int(tx["in_msg"]["value"]) / 1e9
+                    if val >= 0.09:
+                        db.table("pagos_procesados").insert({"hash": tx_hash, "user_id": u_id, "monto": val}).execute()
+                        db.rpc('acreditar_puntos', {'id_usuario': u_id, 'cantidad': val}).execute()
+                        return {"success": True}
+    except:
+        pass
     return {"success": False}
+
+@app.route('/api/solicitar_retiro', methods=['POST'])
+async def solicitar_retiro():
+    data = request.get_json()
+    u_id, nombre, cantidad = data.get('user_id'), data.get('nombre'), data.get('cantidad')
+    try:
+        bot_app = Application.builder().token(TELEGRAM_TOKEN).build()
+        async with bot_app:
+            msg = f"🔔 **SOLICITUD RETIRO**\\nUsuario: {nombre} ({u_id})\\nCant: {cantidad} TON"
+            await bot_app.bot.send_message(chat_id=MI_ID_TELEGRAM, text=msg)
+        return {"message": "Solicitud enviada al admin."}
+    except:
+        return {"error": "Error de envío."}
 
 @app.route('/api/index', methods=['POST'])
 async def bot_handler():
     update_data = request.get_json(force=True)
     bot_app = Application.builder().token(TELEGRAM_TOKEN).build()
+    
     async def start(update, context):
         u = update.effective_user
         # Lógica de Referidos
         if context.args and context.args[0].isdigit():
             referrer_id = int(context.args[0])
             if referrer_id != u.id:
-                db.rpc('sumar_referido', {'id_padre': referrer_id}).execute()
+                try:
+                    db.rpc('sumar_referido', {'id_padre': referrer_id}).execute()
+                except:
+                    pass
         
         db.table("jugadores").upsert({"user_id": u.id, "nombre": u.first_name}).execute()
         kb = [[InlineKeyboardButton("💎 vIcmAr Platinum", web_app=WebAppInfo(url=f"https://{request.host}/"))]]
-        await update.message.reply_text(f"Hola {u.first_name}! 🏴‍☠️ Bienvenido al sistema Platinum.", reply_markup=InlineKeyboardMarkup(kb))
+        await update.message.reply_text(f"Hola {u.first_name}! 🏴‍☠️ Bienvenido.", reply_markup=InlineKeyboardMarkup(kb))
     
     bot_app.add_handler(CommandHandler("start", start))
     update = Update.de_json(update_data, bot_app.bot)
-    async with bot_app: await bot_app.process_update(update)
+    async with bot_app:
+        await bot_app.process_update(update)
     return "ok", 200
-``` 🏴‍☠️💎🔥
